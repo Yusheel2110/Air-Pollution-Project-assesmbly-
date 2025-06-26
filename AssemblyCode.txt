@@ -1,0 +1,614 @@
+    ; PIC16F690
+
+    #include <p16f690.inc> ; Include the device-specific header
+
+ __CONFIG _CP_OFF & _CPD_OFF & _BOR_OFF & _MCLRE_ON & _WDT_OFF & _PWRTE_ON & _INTRC_OSC_NOCLKOUT & _FCMEN_OFF & _IESO_OFF 
+
+GPR_VAR UDATA
+    ; Start of the program
+    ORG 0x0000       ; Reset vector
+    GOTO START       ; Jump to the start of the program
+
+    ; Main program
+START:
+        BCF STATUS, RP0      ; Select Bank 0
+        BCF STATUS, RP1      ; Ensure Bank 0 is selected
+        CLRF PORTA           ; Clear PORTA
+        CLRF PORTB           ; Clear PORTB
+        CLRF PORTC           ; Clear PORTC
+
+
+        MOVLW b'01001101'
+        MOVWF ADCON0               ;Left justified, external Vref, enable AN3, enable AD
+       
+                ; Configure I/O ports
+        BSF STATUS, RP0      ; Select Bank 1
+
+
+
+       
+         BCF OSCCON,6
+         BSF OSCCON,5		;FOSC = 500kHz
+         BSF OSCCON,4	
+         BSF TRISA,1			;Set PORTA<1> as input[Vref]
+         BSF TRISA,4	    ;Set PORTA<4> as input for the LM35
+
+	
+        BCF TRISB, 7 ; set RB7 as output
+	
+	
+	CLRF ADCON1	
+	
+
+        ; Set entire PORTB and PORTC as outputs
+        CLRF TRISB           ; Set all pins of PORTB as outputs
+        CLRF TRISC           ; Set all pins of PORTC as outputs
+
+; Set analog inputs to digital
+        BSF STATUS, RP1      ; Select Bank 2
+        BCF STATUS, RP0      ; Ensure Bank 2 is selected
+        CLRF ANSEL           ; Set all to digital I/O
+        CLRF ANSELH          ; Set remaining analog pins to digital
+
+        BSF ANSEL,3		;Allow PORTA,4/AN3 to be analog input
+        BSF ANSEL,1		;Allow Vref to be analog input (PORTA,5[AN1])/EXT Int
+        ;Bank 0    
+        BCF STATUS,RP0		;Set back to Bank 0
+        BCF STATUS,RP1
+
+
+
+W           EQU 00h
+COUNT	    EQU 26h
+W_TEMP	    EQU	28h
+TMP2	    EQU 0x32
+TMP3	    EQU 0x33
+TEMP1_CONVERT equ 40h  ; Temp1 for BCD conversion
+TEMP2_CONVERT equ 41h  ; Temp2 for BCD conversion
+COUNTER_CONVERT equ 42h ; Counter for division
+VALUE_TO_CONVERT equ 0x24 ; Address of the value to convert
+TEMP1   EQU 0x50        ; Temporary register for storing 100
+TEMP2   EQU 0x51        ; Temporary register for storing 10
+C       EQU 0
+;*******************************************************************************
+
+	
+MAIN:
+        MOVLW 0x26
+	
+	Call InitialiseLCD
+	 Call LCDWriteMain
+	Call LCDWriteBottomRow
+	Call BuzzerOff
+	
+MAINLOOP
+        Call ADC
+	goto MAINLOOP
+
+	
+;********************************************************************************************************************************************
+InitialiseLCD
+	call	    Delay2
+	bcf	    PORTB, 4	    ; Command
+
+	movlw	    b'00000001'	
+	movwf	    PORTC
+	bsf	    PORTB, 6
+	call	    Del1ms
+	bcf	    PORTB, 6
+	call	    Del1ms
+
+	movlw	    b'00000010'	    ; Cursor return to home 
+	movwf	    PORTC
+	bsf	    PORTB, 6
+	call	    Del1ms
+	bcf	    PORTB, 6
+	call	    Del1ms
+
+	movlw	    b'00000110'
+	movwf	    PORTC
+	bsf	    PORTB, 6
+	call	    Del1ms
+	bcf	    PORTB, 6
+	call	    Del1ms
+
+	movlw	    b'00001111'
+	movwf	    PORTC
+	bsf	    PORTB, 6
+	call	    Del1ms
+	bcf	    PORTB, 6
+	call	    Del1ms
+
+	movlw	    b'00010100'
+	movwf	    PORTC
+	bsf	    PORTB, 6
+	call	    Del1ms
+	bcf	    PORTB, 6
+	call	    Del1ms
+
+	movlw	    b'00111100'
+	movwf	    PORTC
+	bsf	    PORTB, 6
+	call	    Del1ms
+	bcf	    PORTB, 6
+	call	    Del1ms
+
+	movlw	    0x80
+	movwf	    PORTC
+	bsf	    PORTB, 6
+	call	    Del1ms
+	bcf	    PORTB, 6
+	call	    Del1ms
+	return
+;*******************************************************************************	
+; Buzzer Subroutine
+BuzzerOn
+    bsf PORTB, 7              ; Set RB7 high to turn on the buzzer
+    return
+
+BuzzerOff
+    bcf PORTB, 7              ; Clear RB7 to turn off the buzzer
+    return
+
+;**********DELAY 1MS************************************************************
+Del1ms  movlw	    d'250'	    ; Initial value
+loop1ms addlw	    d'255'	    ; Dec WREG
+        btfss	    STATUS,Z	    ; Zero flag set?
+        goto	    loop1ms	    ; No, keep looping
+        return			    ; Yes, 1ms done
+;*******************************************************************************
+    
+;**********100 MS DELAY*********************************************************
+Delay2
+	movlw	    0x64 
+	movwf	    TMP2
+loopDel2
+	call	    Del1ms
+	decfsz	    TMP2
+	goto	    loopDel2
+	return
+;*******************************************************************************
+
+;**********1 S DELAY************************************************************
+Delay1s
+	movlw	    0x0A 
+	movwf	    TMP3
+Wait
+	call	    Delay2
+	decfsz	    TMP3
+	goto	    Wait
+	return
+;*******************************************************************************
+
+;**********340ms DELAY**********************************************************
+Delay	movlw	    d'255'
+	movwf	    COUNT
+Begin	movlw	    d'250'	    ; Initial value
+loopDel addlw	    d'255'	    ; Dec WREG
+        btfss	    STATUS,Z	    ; Zero flag set?
+        goto	    loopDel	    ; No, keep looping
+	decfsz	    COUNT
+	goto	    Begin
+        return			    ; Yes, 340ms done
+;*******************************************************************************	
+LCDWriteMain			    ; Write home message when there is no detection
+ 	bcf	    PORTB,7	    ; Disable alarm 
+	
+	bcf	    PORTB,4	    ; Select LCD command register
+	movlw	    b'0000001'	    ; Clear LCD screen
+	movwf	    PORTC
+	bsf	    PORTB, 6	    ; Toggle Data Enable
+	bcf	    PORTB, 6
+
+	bsf	    PORTB,4
+        call	    Del1ms
+	; Write the message "Value"
+	movlw	    '2'
+	movwf	    PORTC
+	bsf	    PORTB,6
+	bcf	    PORTB,6
+	call	    Del1ms
+	movlw	    '2'
+	movwf	    PORTC
+	bsf	    PORTB, 6
+	bcf	    PORTB, 6
+	Call	    Del1ms
+	movlw	    '1'
+	movwf	    PORTC
+	bsf	    PORTB, 6
+	bcf	    PORTB, 6
+	Call	    Del1ms
+	movlw	    '0'
+	movwf	    PORTC
+	bsf	    PORTB,6
+	bcf	    PORTB,6
+	call	    Del1ms
+	movlw	    '0'
+	movwf	    PORTC
+	bsf	    PORTB,6
+	bcf	    PORTB,6
+	call	    Del1ms
+	movlw	    '5'
+	movwf	    PORTC
+	bsf	    PORTB,6
+	bcf	    PORTB,6
+	call	    Del1ms
+	movlw	    '0'
+	movwf	    PORTC
+	bsf	    PORTB,6
+	bcf	    PORTB,6
+	call	    Del1ms
+	movlw	    '9'
+	movwf	    PORTC
+	bsf	    PORTB,6
+	bcf	    PORTB,6
+	call	    Del1ms
+	movlw	    '0'
+	movwf	    PORTC
+	bsf	    PORTB,6
+	bcf	    PORTB,6
+	call	    Del1ms
+	
+	
+	return
+	;****************************************************************************************
+LCDWriteBottomRow
+    bcf     PORTB, 4       ; Select LCD command register
+    movlw   0xC0           ; Move cursor to the beginning of the bottom row
+    movwf   PORTC
+    bsf     PORTB, 6       ; Enable Data
+    bcf     PORTB, 6       ; Disable Data
+    call    Del1ms
+
+    ; Write 'Q'
+    bsf     PORTB, 4       ; Select LCD data register
+    movlw   'Q'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'U'
+    movlw   'u'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'A'
+    movlw   'a'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'L'
+    movlw   'l'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'I'
+    movlw   'i'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'T'
+    movlw   't'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'Y'
+    movlw   'y'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+   ; Write ':'
+    movlw   ':'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    return
+;**********************************************************************************************************
+ADC
+    BSF ADCON0,1	    ;Start ADC conversion
+Wait_loop
+    BTFSC ADCON0,1	    ;Checks if conversion done, if so, exit loop
+    GOTO Wait_loop	    
+    MOVFW ADRESH	    ;Moves the higher 8 bits into W
+    MOVWF 0x20
+    MOVWF 0x24
+   
+    Call CompareThresholdGood
+    RETURN
+    ;*****************************************************************************************************************************************************
+LCDWriteBad
+    Call BuzzerOn
+    bcf     PORTB, 4       ; Select LCD command register
+    movlw   0x0C           ; Command to turn off the cursor and blinking
+    movwf   PORTC
+    bsf     PORTB, 6       ; Enable Data
+    bcf     PORTB, 6       ; Disable Data
+    call    Del1ms          ; Delay to allow the command to process
+    ; Position cursor on the bottom row, 8 columns to the right (0xC8)
+    bcf     PORTB, 4       ; Select LCD command register
+    movlw   0xC0          ; Move cursor to the 8th position of the bottom row
+    movwf   PORTC
+    bsf     PORTB, 6       ; Enable Data
+    bcf     PORTB, 6       ; Disable Data
+    call    Del1ms
+
+     ; Write 'Q'
+    bsf     PORTB, 4       ; Select LCD data register
+    movlw   'Q'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'U'
+    movlw   'u'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'A'
+    movlw   'a'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'L'
+    movlw   'l'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'I'
+    movlw   'i'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'T'
+    movlw   't'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'Y'
+    movlw   'y'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+   ; Write ':'
+    movlw   ':'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    ; Write 'B'
+    bsf     PORTB, 4       ; Select LCD data register
+    movlw   'U'
+    movwf   PORTC
+    bsf     PORTB, 6       ; Enable Data
+    bcf     PORTB, 6       ; Disable Data
+    call    Del1ms
+
+    ; Write 'a'
+    movlw   's'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'd'
+    movlw   'e'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'd'
+    movlw   ' '
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    
+    ; Write 'd'
+    movlw   'M'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    movlw   'a'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    movlw   's'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    movlw   'k'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    movlw   ' '
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    return
+;*****************************************************************************************************************************************************
+LCDWriteGood
+    Call BuzzerOff
+    bcf     PORTB, 4       ; Select LCD command register
+    movlw   0x0C           ; Command to turn off the cursor and blinking
+    movwf   PORTC
+    bsf     PORTB, 6       ; Enable Data
+    bcf     PORTB, 6       ; Disable Data
+    call    Del1ms          ; Delay to allow the command to process
+    ; Position cursor on the bottom row, 8 columns to the right (0xC8)
+    bcf     PORTB, 4       ; Select LCD command register
+    movlw   0xC0          ; Move cursor to the 8th position of the bottom row
+    movwf   PORTC
+    bsf     PORTB, 6       ; Enable Data
+    bcf     PORTB, 6       ; Disable Data
+    call    Del1ms
+
+     ; Write 'Q'
+    bsf     PORTB, 4       ; Select LCD data register
+    movlw   'Q'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'U'
+    movlw   'u'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'A'
+    movlw   'a'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'L'
+    movlw   'l'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'I'
+    movlw   'i'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'T'
+    movlw   't'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'Y'
+    movlw   'y'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+   ; Write ':'
+    movlw   ':'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    ; Write 'g'
+    bsf     PORTB, 4       ; Select LCD data register
+    movlw   'F'
+    movwf   PORTC
+    bsf     PORTB, 6       ; Enable Data
+    bcf     PORTB, 6       ; Disable Data
+    call    Del1ms
+
+    ; Write 'o'
+    movlw   'r'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'o'
+    movlw   'e'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    ; Write 'd'
+    movlw   's'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    
+    movlw   'h'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    movlw   'A'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    movlw   'i'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+    movlw   'r'
+    movwf   PORTC
+    bsf     PORTB, 6
+    bcf     PORTB, 6
+    call    Del1ms
+
+    return
+    ;**********************************************************************************************************************************************************************************************************************
+; Routine to check if value in register 0x20 is less than 150
+CompareThresholdGood
+    MOVF 0x20, W           ; Move the value from 0x20 into WREG
+    SUBLW 0x26              ; Subtract 100 from WREG
+    ; If the result is negative, the original value was less than 100
+    ; The Zero flag will be clear, and the Carry flag will be set for negative result
+    BTFSC STATUS, C         ; Check if Carry flag is set (indicating WREG < 100)
+    Call LCDWriteGood             ; If not less than 100, skip calling LCDWriteGood
+    BTFSC STATUS, C         ; Check if Carry flag is set (indicating WREG < 100)
+    RETURN                  ; Return from the routine
+    CALL  CompareThresholdBad    ; Call LCDWriteGood if the value is less than 100
+    Return
+
+        ;**********************************************************************************************************************************************************************************************************************
+; Routine to check if value in register 0x20 is less than 100
+CompareThresholdBad
+    MOVF 0x20, W           ; Move the value from 0x20 into WREG
+    SUBLW 0x15              ; Subtract 100 from WREG
+    ; If the result is negative, the original value was less than 100
+    ; The Zero flag will be clear, and the Carry flag will be set for negative result
+    BTFSC STATUS, C         ; Check if Carry flag is set (indicating WREG < 100)
+    RETURN                  ; If not less than 100, skip calling LCDWriteGood
+    CALL LCDWriteBad       ; Call LCDWriteGood if the value is less than 100
+    RETURN                  ; Return from the routine
+
+;*******************************************************************************
+END
+
+
+
+
