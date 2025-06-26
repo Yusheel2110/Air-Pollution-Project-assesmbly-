@@ -1,3 +1,7 @@
+Please refer to Assembly.txt for the code used in this project.
+Please refer to the report for an in-depth reporting of the project.
+This readme is a very simple breakdown of the project.
+
 ✅ Microcontroller Used
 PIC16F690
 
